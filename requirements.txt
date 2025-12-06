@@ -1,0 +1,7 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+python-multipart==0.0.9
+pypdfium2==4.30.0
+Pillow==12.0.0
+openai==2.9.0
+pydantic==2.6.1

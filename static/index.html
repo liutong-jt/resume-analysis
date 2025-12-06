@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Smart Resume Evaluator</title>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Ionicons -->
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body class="bg-gray-50 text-slate-800 h-screen overflow-hidden flex flex-col">
+
+    <div id="app" class="h-full flex flex-col">
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shrink-0 z-20">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">R
+                </div>
+                <h1 class="text-xl font-semibold tracking-tight">Resume Evaluator AI</h1>
+            </div>
+        </header>
+
+        <!-- Error Alert -->
+        <transition name="fade-down">
+            <div v-if="showError"
+                class="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <ion-icon name="warning-outline" class="text-red-500 text-xl"></ion-icon>
+                    <p class="text-red-800 text-sm font-medium">{{ errorMessage }}</p>
+                </div>
+                <button @click="clearError" class="text-red-400 hover:text-red-600 transition-colors">
+                    <ion-icon name="close-outline" class="text-lg"></ion-icon>
+                </button>
+            </div>
+        </transition>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex overflow-hidden relative min-h-0">
+
+            <!-- Left Sidebar / Dropzone -->
+            <div class="w-80 bg-white border-r border-gray-200 flex flex-col z-10 min-h-0">
+                <div class="p-4 border-b border-gray-100">
+                    <button @click="triggerFileInput"
+                        class="w-full h-32 border-2 border-dashed border-indigo-200 rounded-xl bg-indigo-50 flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:bg-indigo-100 transition-all cursor-pointer group">
+                        <ion-icon name="cloud-upload-outline"
+                            class="text-3xl text-indigo-400 group-hover:scale-110 transition-transform"></ion-icon>
+                        <span class="text-sm font-medium text-indigo-600">Click or Drag PDF</span>
+                    </button>
+                    <input type="file" ref="fileInput" @change="handleFileUpload" accept=".pdf" multiple class="hidden">
+                    <div class="mt-2 text-xs text-center text-gray-400">Supports multi-file upload</div>
+                </div>
+
+                <!-- Candidate List -->
+                <div class="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
+                    <div v-for="(c, index) in candidates" :key="index" @click="selectCandidate(index)"
+                        :class="{'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200': selectedIndex === index, 'bg-white border-transparent hover:bg-gray-50': selectedIndex !== index}"
+                        class="p-3 rounded-lg border cursor-pointer transition-all relative">
+                        <!-- Loading Spinner -->
+                        <div v-if="c.status === 'analyzing'" class="absolute right-3 top-3">
+                            <ion-icon name="sync-outline" class="animate-spin text-indigo-500"></ion-icon>
+                        </div>
+                        <div v-else-if="c.status === 'done'" class="absolute right-3 top-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                                :class="getScoreColor(c.result?.total_score)">
+                                {{ c.result?.total_score }}
+                            </div>
+                        </div>
+
+                        <h3 class="font-medium truncate pr-8">
+                            {{ c.name || c.filename.replace(/\.[^/.]+$/, "") || 'Unnamed Candidate' }}
+                        </h3>
+                        <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                            <ion-icon name="document-text-outline"></ion-icon>
+                            {{ c.pageCount }} pages
+                        </p>
+                        <div v-if="c.result" class="mt-2 flex flex-wrap gap-1">
+                            <span
+                                class="px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-medium uppercase tracking-wide">
+                                {{ c.result.domain_classification }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Sidebar Footer -->
+                <div class="p-3 border-t border-gray-100 bg-gray-50">
+                    <button @click="clearCache"
+                        class="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors">
+                        <ion-icon name="trash-outline"></ion-icon>
+                        Clear History
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Workspace -->
+            <div class="flex-1 bg-gray-50 flex flex-col overflow-hidden relative min-h-0">
+
+                <!-- Empty State -->
+                <div v-if="selectedIndex === null"
+                    class="absolute inset-0 flex flex-col items-center justify-center text-gray-300">
+                    <ion-icon name="finger-print-outline" class="text-6xl mb-4"></ion-icon>
+                    <p class="text-lg font-light">Select a candidate to view details</p>
+                </div>
+
+                <!-- Detail View -->
+                <div v-if="selectedIndex !== null" class="flex-1 flex overflow-hidden min-h-0">
+
+                    <!-- Resume Preview (Left Pane) -->
+                    <div
+                        class="w-1/2 h-full bg-slate-800 resume-preview-container p-8 shadow-inner flex flex-col gap-4 items-center overflow-y-auto min-h-0">
+                        <div v-for="(img, i) in currentCandidate.image_urls" :key="i"
+                            class="w-full max-w-2xl bg-white shadow-xl rounded-sm overflow-hidden resume-page flex-shrink-0">
+                            <img :src="img" class="w-full h-auto" loading="lazy" alt="Resume page">
+                        </div>
+                    </div>
+
+                    <!-- Analysis Result (Right Pane) -->
+                    <div class="w-1/2 h-full bg-white overflow-y-auto p-8 min-h-0">
+                        <div v-if="currentCandidate.status === 'parsing' || currentCandidate.status === 'analyzing'"
+                            class="h-full flex flex-col items-center justify-center text-indigo-500 gap-4">
+                            <div
+                                class="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin">
+                            </div>
+                            <p class="animate-pulse font-medium">AI is analyzing the resume...</p>
+                        </div>
+
+                        <div v-if="currentCandidate.status === 'done' && currentCandidate.result"
+                            class="space-y-8 animate-fade-in-up">
+                            <!-- Header -->
+                            <div>
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <h1 class="text-3xl font-bold text-slate-900">
+                                            {{ currentCandidate.result.candidate_name || 'Candidate' }}
+                                        </h1>
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <span
+                                                class="px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-700 text-xs font-bold tracking-wider uppercase">
+                                                {{ currentCandidate.result.domain_classification }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col items-end">
+                                        <span class="text-4xl font-black text-slate-800 tracking-tighter">{{
+                                            currentCandidate.result.total_score }}</span>
+                                        <span class="text-xs text-gray-400 font-medium uppercase tracking-widest">Total
+                                            SCore</span>
+                                    </div>
+                                </div>
+
+                                <blockquote
+                                    class="mt-6 p-4 bg-slate-50 border-l-4 border-indigo-500 italic text-slate-600 rounded-r-lg">
+                                    "{{ currentCandidate.result.summary_one_liner }}"
+                                </blockquote>
+                            </div>
+
+                            <!-- Evaluation Matrix -->
+                            <div>
+                                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                    <ion-icon name="analytics-outline"></ion-icon> Evaluation Matrix
+                                </h3>
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div v-for="(item, key) in currentCandidate.result.evaluation_matrix" :key="key"
+                                        class="group p-4 rounded-xl border border-gray-100 bg-white hover:border-indigo-100 hover:shadow-lg transition-all">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="font-semibold text-slate-700 capitalize">{{ formatKey(key)
+                                                }}</span>
+                                            <span
+                                                class="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{{
+                                                item.score }}/10</span>
+                                        </div>
+                                        <!-- Progress Bar -->
+                                        <div class="w-full bg-gray-100 rounded-full h-2 mb-2">
+                                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-1000"
+                                                :style="{width: (item.score * 10) + '%'}"></div>
+                                        </div>
+                                        <p class="text-sm text-gray-500 leading-relaxed">{{ item.reason }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
