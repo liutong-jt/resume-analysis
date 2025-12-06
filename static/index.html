@@ -64,8 +64,8 @@
                     class="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500 bg-gray-50/50">
                     <span class="font-medium">Candidates ({{ candidates.length }})</span>
                     <button @click="toggleSort" class="flex items-center gap-1 hover:text-indigo-600 transition-colors">
-                        <ion-icon :name="sortOrder === 'date' ? 'time-outline' : 'trophy-outline'"></ion-icon>
-                        {{ sortOrder === 'date' ? 'Recent' : 'Score' }}
+                        <ion-icon :name="currentSortMeta.icon"></ion-icon>
+                        Sort: {{ currentSortMeta.label }}
                     </button>
                 </div>
 
@@ -93,7 +93,7 @@
                         </div>
 
                         <h3 class="font-medium truncate pr-8">
-                            {{ c.name || c.filename.replace(/\.[^/.]+$/, "") || 'Unnamed Candidate' }}
+                            {{ c.filename || 'Uploaded file' }}
                         </h3>
                         <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
                             <ion-icon name="document-text-outline"></ion-icon>

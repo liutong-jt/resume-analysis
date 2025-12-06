@@ -12,7 +12,22 @@ const app = createApp({
         const candidates = ref([]);
         const errorMessage = ref('');
         const showError = ref(false);
-        const sortOrder = ref('date'); // 'date' | 'score'
+        const sortOrder = ref('date'); // 'date' | 'score' | 'category'
+        const sortModes = ['date', 'score', 'category'];
+        const sortMeta = {
+            date: { label: 'Recent', icon: 'time-outline' },
+            score: { label: 'Score', icon: 'trophy-outline' },
+            category: { label: 'Category', icon: 'albums-outline' }
+        };
+        const categoryPriority = { AI: 0, BigData: 1, Other: 2 };
+
+        const deriveCategory = (candidate) => {
+            const classification = candidate.result?.domain_classification || '';
+            const normalized = classification.trim().toLowerCase();
+            if (normalized.includes('ai')) return 'AI';
+            if (normalized.includes('big')) return 'BigData';
+            return 'Other';
+        };
 
         const sortedCandidates = computed(() => {
             const list = [...candidates.value];
@@ -24,11 +39,23 @@ const app = createApp({
                     return scoreB - scoreA;
                 });
             }
+            if (sortOrder.value === 'category') {
+                return list.sort((a, b) => {
+                    const catA = deriveCategory(a);
+                    const catB = deriveCategory(b);
+                    const priorityDiff = (categoryPriority[catA] ?? categoryPriority.Other) - (categoryPriority[catB] ?? categoryPriority.Other);
+                    if (priorityDiff !== 0) return priorityDiff;
+                    // Preserve original order for candidates in the same category
+                    return candidates.value.indexOf(a) - candidates.value.indexOf(b);
+                });
+            }
             // Default: Keep original order (which is usually date desc from backend)
             // But if we want to be explicit about date:
             // Since backend sends sorted by ctime desc, index order is date order.
             return list;
         });
+
+        const currentSortMeta = computed(() => sortMeta[sortOrder.value]);
 
         const currentCandidate = computed(() => {
             if (selectedIndex.value === null) return null;
@@ -202,7 +229,9 @@ const app = createApp({
         };
 
         const toggleSort = () => {
-            sortOrder.value = sortOrder.value === 'date' ? 'score' : 'date';
+            const currentIndex = sortModes.indexOf(sortOrder.value);
+            const nextIndex = (currentIndex + 1) % sortModes.length;
+            sortOrder.value = sortModes[nextIndex];
             selectedIndex.value = null; // Clear selection to avoid confusion
         };
 
@@ -260,7 +289,7 @@ const app = createApp({
             getScoreColor, formatKey,
             errorMessage, showError, clearError,
             clearCache, deleteCandidate, removeDuplicates,
-            sortedCandidates, sortOrder, toggleSort
+            sortedCandidates, sortOrder, toggleSort, currentSortMeta
         };
     }
 });
