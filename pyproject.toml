@@ -7,7 +7,7 @@ name = "resume-evalate"
 version = "0.1.0"
 description = "FastAPI backend and static SPA for resume analysis."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Resume Evaluator Team" }]
 dependencies = [
     "fastapi==0.109.2",
