@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resume-evalate"
+version = "0.1.0"
+description = "FastAPI backend and static SPA for resume analysis."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Resume Evaluator Team" }]
+dependencies = [
+    "fastapi==0.109.2",
+    "uvicorn==0.27.1",
+    "python-multipart==0.0.9",
+    "pypdfium2==4.30.0",
+    "Pillow==12.0.0",
+    "openai==2.9.0",
+    "pydantic==2.6.1",
+    "python-dotenv==1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools]
+py-modules = [
+    "main",
+    "test_evaluation",
+    "verify_backend",
+    "verify_ocr_vlm",
+]
