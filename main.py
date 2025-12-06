@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,6 +52,21 @@ class AnalyzeRequest(BaseModel):
     candidate_id: str
 
 # ----------------- Helper Functions -----------------
+
+def get_openai_settings() -> Dict[str, str]:
+    """
+    Resolve OpenAI credentials and model config once so coroutine calls can share it.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+
+    return {
+        "api_key": api_key,
+        "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "ocr_model": os.getenv("OPENAI_OCR_MODEL_NAME", "gpt-4o"),
+        "analysis_model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o"),
+    }
 
 def pdf_to_images(pdf_path: Path, output_dir: Path) -> List[str]:
     """
@@ -196,7 +211,11 @@ def process_evaluation_result(result: dict, filename: str = None) -> dict:
 
     return result
 
-def call_vlm_for_ocr(candidate_id: str) -> str:
+async def call_vlm_for_ocr(
+    candidate_id: str,
+    client: Optional[AsyncOpenAI] = None,
+    model_name: Optional[str] = None,
+) -> str:
     """
     第一次 LLM 调用：使用 VLM 从简历图像中提取 OCR 文本
     
@@ -211,15 +230,13 @@ def call_vlm_for_ocr(candidate_id: str) -> str:
     if not candidate_images_dir.exists():
         raise HTTPException(status_code=404, detail="Candidate images not found")
     
-    # Get API configuration
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    model_name = os.getenv("OPENAI_OCR_MODEL_NAME", "gpt-4o")
-    
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    settings = None
+    if client is None or model_name is None:
+        settings = get_openai_settings()
+    if client is None:
+        client = AsyncOpenAI(api_key=settings["api_key"], base_url=settings["base_url"])
+    if model_name is None:
+        model_name = settings["ocr_model"]
     
     # Construct messages for OCR
     messages = [
@@ -239,7 +256,7 @@ def call_vlm_for_ocr(candidate_id: str) -> str:
             })
     
     # Call VLM for OCR
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=model_name,
         messages=messages,
         max_tokens=4000
@@ -254,7 +271,13 @@ def call_vlm_for_ocr(candidate_id: str) -> str:
     
     return ocr_text
 
-def call_llm_for_analysis(candidate_id: str, ocr_text: str, original_filename: str = "Resume") -> dict:
+async def call_llm_for_analysis(
+    candidate_id: str,
+    ocr_text: str,
+    original_filename: str = "Resume",
+    client: Optional[AsyncOpenAI] = None,
+    model_name: Optional[str] = None,
+) -> dict:
     """
     第二次 LLM 调用：基于 OCR 文本进行技术分析评估
     
@@ -266,15 +289,13 @@ def call_llm_for_analysis(candidate_id: str, ocr_text: str, original_filename: s
     Returns:
         dict: 分析结果的 JSON 对象
     """
-    # Get API configuration
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4o")
-    
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    settings = None
+    if client is None or model_name is None:
+        settings = get_openai_settings()
+    if client is None:
+        client = AsyncOpenAI(api_key=settings["api_key"], base_url=settings["base_url"])
+    if model_name is None:
+        model_name = settings["analysis_model"]
     
     # Construct messages for analysis
     messages = [
@@ -283,7 +304,7 @@ def call_llm_for_analysis(candidate_id: str, ocr_text: str, original_filename: s
     ]
     
     # Call LLM for analysis
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=model_name,
         messages=messages,
         max_tokens=2000,
@@ -421,6 +442,13 @@ async def analyze_resume(request: AnalyzeRequest):
             except:
                 pass
 
+        # 统一初始化异步 OpenAI 客户端，两个阶段可以共享连接
+        openai_settings = get_openai_settings()
+        async_client = AsyncOpenAI(
+            api_key=openai_settings["api_key"],
+            base_url=openai_settings["base_url"]
+        )
+
         # 阶段 1：OCR 文本提取
         # Check if OCR already exists (for idempotency)
         ocr_path = OCR_DIR / f"{cid}.txt"
@@ -430,10 +458,20 @@ async def analyze_resume(request: AnalyzeRequest):
                 ocr_text = f.read()
         else:
             # Perform OCR
-            ocr_text = call_vlm_for_ocr(cid)
+            ocr_text = await call_vlm_for_ocr(
+                cid,
+                client=async_client,
+                model_name=openai_settings["ocr_model"]
+            )
         
         # 阶段 2：技术分析评估
-        analysis_result = call_llm_for_analysis(cid, ocr_text, original_filename)
+        analysis_result = await call_llm_for_analysis(
+            cid,
+            ocr_text,
+            original_filename,
+            client=async_client,
+            model_name=openai_settings["analysis_model"]
+        )
         
         return analysis_result
 
