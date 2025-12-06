@@ -32,7 +32,6 @@ source .venv/bin/activate
 uv sync
 uv run uvicorn main:app --reload
 ```
-> 如果只想临时体验，可直接运行 `pip install -r requirements.txt`（若存在）但推荐 `pip install -e .` 以确保依赖与 `pyproject.toml` 同步。
 
 ### 3. 配置 API 密钥
 在项目根目录创建 `.env` 并写入：
