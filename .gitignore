@@ -128,3 +128,7 @@ secrets.json
 .env.development
 .env.test
 .env.production
+
+data/
+.claude/
+AGENTS.md

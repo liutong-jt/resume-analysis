@@ -12,10 +12,28 @@ const app = createApp({
         const candidates = ref([]);
         const errorMessage = ref('');
         const showError = ref(false);
+        const sortOrder = ref('date'); // 'date' | 'score'
+
+        const sortedCandidates = computed(() => {
+            const list = [...candidates.value];
+            if (sortOrder.value === 'score') {
+                return list.sort((a, b) => {
+                    const scoreA = a.result ? (a.result.total_score || 0) : -1;
+                    const scoreB = b.result ? (b.result.total_score || 0) : -1;
+                    // Descending score, processed items first
+                    return scoreB - scoreA;
+                });
+            }
+            // Default: Keep original order (which is usually date desc from backend)
+            // But if we want to be explicit about date:
+            // Since backend sends sorted by ctime desc, index order is date order.
+            return list;
+        });
 
         const currentCandidate = computed(() => {
             if (selectedIndex.value === null) return null;
-            return candidates.value[selectedIndex.value];
+            // selectedIndex tracks the index in the SORTED list now
+            return sortedCandidates.value[selectedIndex.value];
         });
 
         // Load History
@@ -44,25 +62,27 @@ const app = createApp({
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 // Add placeholder
-                const newInd = candidates.value.push({
+                const newCandidate = {
                     filename: file.name,
                     id: null,
                     status: 'pending', // pending -> parsing -> analyzing -> done
                     image_urls: [],
                     result: null,
                     pageCount: 0
-                }) - 1;
+                };
+                candidates.value.unshift(newCandidate); // Add to top
 
-                // Start process
-                processCandidate(newInd, file);
+                // Find index to process (it's 0 since we unshifted, but tracking by obj is safer if async changes happen)
+                // Actually, let's just pass the object to processCandidate
+                processCandidate(newCandidate, file);
             }
             // Clear input
             event.target.value = '';
         };
 
         // Candidate Processing
-        const processCandidate = async (index, fileObj) => {
-            const candidate = candidates.value[index];
+        const processCandidate = async (candidate, fileObj) => {
+            // No need to lookup by index, use object ref
 
             try {
                 // 1. Upload & Parse PDF
@@ -134,6 +154,75 @@ const app = createApp({
             }
         };
 
+        // Delete Candidate
+        const deleteCandidate = async (candidate, event) => {
+            if (event) event.stopPropagation();
+            if (!confirm(`Delete ${candidate.filename}?`)) return;
+
+            try {
+                // If it's a pending/placeholder, just remove from list
+                if (!candidate.id) {
+                    const idx = candidates.value.indexOf(candidate);
+                    if (idx > -1) candidates.value.splice(idx, 1);
+                    return;
+                }
+
+                const res = await fetch(`/api/candidates/${candidate.id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    const idx = candidates.value.indexOf(candidate);
+                    if (idx > -1) candidates.value.splice(idx, 1);
+
+                    // Reset selection if the deleted one was selected
+                    // This is a bit tricky with sorted list logic + selection index. 
+                    // Simplest is to just deselect if current view is invalid? 
+                    // Or relying on Vue reactivity might just work but 'selectedIndex' is an integer index.
+                    // If we delete item 2, item 3 becomes 2. The view might shift.
+                    // Let's just set to null to be safe for now, or handle smoothly.
+                    // Actually, if we delete the *currently selected* candidate:
+                    if (currentCandidate.value === candidate) {
+                        selectedIndex.value = null;
+                    } else if (currentCandidate.value) {
+                        // We need to re-find the new index of the current candidate in the sorted list?
+                        // But 'currentCandidate' is computed from selectedIndex.
+                        // If we don't update selectedIndex, we point to a different person.
+                        // Ideally we track selection by ID, not index.
+                    }
+
+                    // To fix the selection jumping issue properly:
+                    // Implementing selection by ID would be better but requires more changes.
+                    // For now, let's just deselect.
+                    selectedIndex.value = null;
+
+                } else {
+                    throw new Error("Failed to delete");
+                }
+            } catch (e) {
+                handleError("Delete failed: " + e.message);
+            }
+        };
+
+        const toggleSort = () => {
+            sortOrder.value = sortOrder.value === 'date' ? 'score' : 'date';
+            selectedIndex.value = null; // Clear selection to avoid confusion
+        };
+
+        // Remove Duplicates
+        const removeDuplicates = async () => {
+            if (!confirm("Remove duplicate candidates? Keeps the most recent upload.")) return;
+            try {
+                const res = await fetch(`/api/candidates/deduplicate`, { method: 'DELETE' });
+                if (res.ok) {
+                    const data = await res.json();
+                    handleError(`Removed ${data.deleted_count} duplicates.`, 3000);
+                    loadHistory(); // Reload list
+                } else {
+                    throw new Error("Failed to deduplicate");
+                }
+            } catch (e) {
+                handleError("Deduplication failed: " + e.message);
+            }
+        };
+
         // Selection Methods
         const selectCandidate = (index) => {
             selectedIndex.value = index;
@@ -170,7 +259,8 @@ const app = createApp({
             candidates, selectedIndex, selectCandidate, currentCandidate,
             getScoreColor, formatKey,
             errorMessage, showError, clearError,
-            clearCache
+            clearCache, deleteCandidate, removeDuplicates,
+            sortedCandidates, sortOrder, toggleSort
         };
     }
 });
