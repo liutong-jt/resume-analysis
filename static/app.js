@@ -7,6 +7,11 @@ const { createApp, ref, computed, onMounted } = Vue;
 const app = createApp({
     setup() {
         // State Management
+        const AUTH_ERROR = 'AUTH_REQUIRED';
+        const isAuthenticated = ref(true);
+        const passwordInput = ref('');
+        const authError = ref('');
+        const authenticating = ref(false);
         const fileInput = ref(null);
         const selectedIndex = ref(null);
         const candidates = ref([]);
@@ -20,6 +25,20 @@ const app = createApp({
             category: { label: 'Category', icon: 'albums-outline' }
         };
         const categoryPriority = { AI: 0, BigData: 1, Other: 2 };
+
+        const fetchWithAuth = async (url, options = {}) => {
+            const opts = { credentials: 'same-origin', ...options };
+            if (options.headers) {
+                opts.headers = options.headers;
+            }
+            const res = await fetch(url, opts);
+            if (res.status === 401) {
+                isAuthenticated.value = false;
+                authError.value = '访问受限，请输入密码';
+                throw new Error(AUTH_ERROR);
+            }
+            return res;
+        };
 
         const deriveCategory = (candidate) => {
             const classification = candidate.result?.domain_classification || '';
@@ -65,13 +84,16 @@ const app = createApp({
 
         // Load History
         const loadHistory = async () => {
+            if (!isAuthenticated.value) return;
             try {
-                const res = await fetch('/api/candidates');
+                const res = await fetchWithAuth('/api/candidates');
                 if (res.ok) {
                     candidates.value = await res.json();
                 }
             } catch (error) {
-                console.error('Failed to load history:', error);
+                if (error.message !== AUTH_ERROR) {
+                    console.error('Failed to load history:', error);
+                }
             }
         };
 
@@ -80,7 +102,13 @@ const app = createApp({
         });
 
         // File Upload Methods
-        const triggerFileInput = () => fileInput.value.click();
+        const triggerFileInput = () => {
+            if (!isAuthenticated.value) {
+                authError.value = '请先输入密码解锁访问';
+                return;
+            }
+            fileInput.value.click();
+        };
 
         const handleFileUpload = async (event) => {
             const files = event.target.files;
@@ -117,7 +145,7 @@ const app = createApp({
                 const formData = new FormData();
                 formData.append('file', fileObj);
 
-                const uploadRes = await fetch('/api/upload_pdf', {
+                const uploadRes = await fetchWithAuth('/api/upload_pdf', {
                     method: 'POST',
                     body: formData
                 });
@@ -141,7 +169,7 @@ const app = createApp({
                     candidate_id: candidate.id
                 };
 
-                const analyzeRes = await fetch('/api/analyze', {
+                const analyzeRes = await fetchWithAuth('/api/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(analyzePayload)
@@ -159,6 +187,11 @@ const app = createApp({
                 candidate.status = 'done';
 
             } catch (error) {
+                if (error.message === AUTH_ERROR) {
+                    const idx = candidates.value.indexOf(candidate);
+                    if (idx > -1) candidates.value.splice(idx, 1);
+                    return;
+                }
                 console.error('Processing error:', error);
                 candidate.status = 'error';
                 handleError(`Error processing ${candidate.filename}: ${error.message}`);
@@ -169,7 +202,7 @@ const app = createApp({
         const clearCache = async () => {
             if (!confirm('Are you sure you want to clear all history? This cannot be undone.')) return;
             try {
-                const res = await fetch('/api/cache', { method: 'DELETE' });
+                const res = await fetchWithAuth('/api/cache', { method: 'DELETE' });
                 if (res.ok) {
                     candidates.value = [];
                     selectedIndex.value = null;
@@ -177,6 +210,7 @@ const app = createApp({
                     throw new Error('Failed to clear cache');
                 }
             } catch (error) {
+                if (error.message === AUTH_ERROR) return;
                 handleError(error.message);
             }
         };
@@ -194,7 +228,7 @@ const app = createApp({
                     return;
                 }
 
-                const res = await fetch(`/api/candidates/${candidate.id}`, { method: 'DELETE' });
+                const res = await fetchWithAuth(`/api/candidates/${candidate.id}`, { method: 'DELETE' });
                 if (res.ok) {
                     const idx = candidates.value.indexOf(candidate);
                     if (idx > -1) candidates.value.splice(idx, 1);
@@ -224,6 +258,7 @@ const app = createApp({
                     throw new Error("Failed to delete");
                 }
             } catch (e) {
+                if (e.message === AUTH_ERROR) return;
                 handleError("Delete failed: " + e.message);
             }
         };
@@ -239,7 +274,7 @@ const app = createApp({
         const removeDuplicates = async () => {
             if (!confirm("Remove duplicate candidates? Keeps the most recent upload.")) return;
             try {
-                const res = await fetch(`/api/candidates/deduplicate`, { method: 'DELETE' });
+                const res = await fetchWithAuth(`/api/candidates/deduplicate`, { method: 'DELETE' });
                 if (res.ok) {
                     const data = await res.json();
                     handleError(`Removed ${data.deleted_count} duplicates.`, 3000);
@@ -248,6 +283,7 @@ const app = createApp({
                     throw new Error("Failed to deduplicate");
                 }
             } catch (e) {
+                if (e.message === AUTH_ERROR) return;
                 handleError("Deduplication failed: " + e.message);
             }
         };
@@ -282,6 +318,40 @@ const app = createApp({
             errorMessage.value = '';
         };
 
+        const submitPassword = async () => {
+            if (!passwordInput.value) {
+                authError.value = '请输入访问密码';
+                return;
+            }
+
+            authenticating.value = true;
+            authError.value = '';
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ password: passwordInput.value.trim() })
+                });
+
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    const detail = errorData.detail || '密码错误';
+                    throw new Error(detail);
+                }
+
+                isAuthenticated.value = true;
+                passwordInput.value = '';
+                authError.value = '';
+                await loadHistory();
+            } catch (error) {
+                authError.value = error.message || '登录失败';
+            } finally {
+                authenticating.value = false;
+            }
+        };
+
 
         return {
             fileInput, triggerFileInput, handleFileUpload,
@@ -289,7 +359,8 @@ const app = createApp({
             getScoreColor, formatKey,
             errorMessage, showError, clearError,
             clearCache, deleteCandidate, removeDuplicates,
-            sortedCandidates, sortOrder, toggleSort, currentSortMeta
+            sortedCandidates, sortOrder, toggleSort, currentSortMeta,
+            isAuthenticated, passwordInput, submitPassword, authError, authenticating
         };
     }
 });

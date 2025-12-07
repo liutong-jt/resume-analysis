@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Dict
 from dotenv import load_dotenv
 import pypdfium2 as pdfium
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,12 @@ OCR_DIR = DATA_DIR / "ocr"
 for path in [UPLOAD_DIR, IMAGES_DIR, RESULTS_DIR, METADATA_DIR, OCR_DIR]:
     path.mkdir(parents=True, exist_ok=True)
 
+APP_PASSWORD = os.getenv("APP_PASSWORD", "999888777")
+PASSWORD_COOKIE_NAME = "resume_evalate_password"
+PROTECTED_PATH_PREFIXES = ("/api", "/data")
+EXCLUDED_PATHS = {"/api/login"}
+SESSION_MAX_AGE = 3 * 24 * 60 * 60  # 3 days
+
 app = FastAPI(title="Resume Evaluator")
 
 # Enable CORS for development flexibility
@@ -46,10 +52,51 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Mount data directory to serve images
 app.mount("/data", StaticFiles(directory="data"), name="data")
 
+
+@app.middleware("http")
+async def enforce_password(request: Request, call_next):
+    """Require the shared password for API and resume assets."""
+    path = request.url.path
+
+    if path in EXCLUDED_PATHS:
+        return await call_next(request)
+
+    if not any(path.startswith(prefix) for prefix in PROTECTED_PATH_PREFIXES):
+        return await call_next(request)
+
+    provided_password = (
+        request.headers.get("x-app-password")
+        or request.cookies.get(PASSWORD_COOKIE_NAME)
+        or request.query_params.get("password")
+    )
+
+    if provided_password != APP_PASSWORD:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    response = await call_next(request)
+
+    if (
+        request.query_params.get("password") == APP_PASSWORD
+        and request.cookies.get(PASSWORD_COOKIE_NAME) != APP_PASSWORD
+    ):
+        response.set_cookie(
+            PASSWORD_COOKIE_NAME,
+            APP_PASSWORD,
+            max_age=SESSION_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+        )
+
+    return response
+
 # ----------------- Models -----------------
 
 class AnalyzeRequest(BaseModel):
     candidate_id: str
+
+
+class LoginRequest(BaseModel):
+    password: str
 
 # ----------------- Helper Functions -----------------
 
@@ -326,6 +373,23 @@ async def call_llm_for_analysis(
 
 
 # ----------------- API Endpoints -----------------
+
+
+@app.post("/api/login")
+async def login(request: LoginRequest):
+    """Validate password and issue a session cookie."""
+    if request.password != APP_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    response = JSONResponse({"status": "ok"})
+    response.set_cookie(
+        PASSWORD_COOKIE_NAME,
+        APP_PASSWORD,
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 @app.get("/api/candidates")
 async def get_candidates():

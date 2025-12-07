@@ -19,7 +19,7 @@
 
 <body class="bg-gray-50 text-slate-800 h-screen overflow-hidden flex flex-col">
 
-    <div id="app" class="h-full flex flex-col">
+    <div id="app" class="h-full flex flex-col relative">
         <!-- Header -->
         <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shrink-0 z-20">
             <div class="flex items-center gap-2">
@@ -216,6 +216,29 @@
             </div>
 
 
+        </div>
+
+        <!-- Password Overlay -->
+        <div v-if="!isAuthenticated"
+            class="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center px-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 space-y-5 text-center">
+                <div class="space-y-1">
+                    <h2 class="text-2xl font-bold text-slate-900">访问受限</h2>
+                    <p class="text-sm text-slate-500">请输入临时访问密码以查看和处理简历。</p>
+                </div>
+                <div class="space-y-3">
+                    <input type="password" v-model="passwordInput" @keyup.enter="submitPassword"
+                        class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="输入访问密码" :disabled="authenticating">
+                    <button @click="submitPassword" :disabled="authenticating"
+                        class="w-full py-3 rounded-xl text-white font-semibold transition-all"
+                        :class="authenticating ? 'bg-indigo-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500'">
+                        {{ authenticating ? '验证中...' : '解锁访问' }}
+                    </button>
+                    <p v-if="authError" class="text-sm text-red-500">{{ authError }}</p>
+                </div>
+                <p class="text-xs text-slate-400">密码由管理员提供，仅在三天内有效。</p>
+            </div>
         </div>
     </div>
 
