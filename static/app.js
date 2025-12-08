@@ -342,7 +342,13 @@ const app = createApp({
         };
 
         const formatKey = (key) => {
-            return key.replace(/_/g, ' ');
+            const map = {
+                'tech_foundation': '技术基础 (Tech Foundation)',
+                'tech_cognition': '技术认知 (Tech Cognition)',
+                'tech_potential': '技术潜力 (Tech Potential)',
+                'learning_ability': '学习能力 (Learning Ability)'
+            };
+            return map[key] || key.replace(/_/g, ' ');
         };
 
         // Error handling methods

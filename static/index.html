@@ -181,8 +181,8 @@
                                     <div class="flex flex-col items-end">
                                         <span class="text-4xl font-black text-slate-800 tracking-tighter">{{
                                             currentCandidate.result.total_score }}</span>
-                                        <span class="text-xs text-gray-400 font-medium uppercase tracking-widest">Total
-                                            SCore</span>
+                                        <span
+                                            class="text-xs text-gray-400 font-medium uppercase tracking-widest">综合评分</span>
                                     </div>
                                 </div>
 
@@ -193,50 +193,73 @@
                             </div>
 
                             <!-- Evaluation Matrix -->
-                            <div>
-                                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <ion-icon name="analytics-outline"></ion-icon> Evaluation Matrix
-                                </h3>
-                                <div class="grid grid-cols-1 gap-4">
-                                    <div v-for="(item, key) in currentCandidate.result.evaluation_matrix" :key="key"
-                                        class="group p-4 rounded-xl border border-gray-100 bg-white hover:border-indigo-100 hover:shadow-lg transition-all">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <span class="font-semibold text-slate-700 capitalize">{{ formatKey(key)
-                                                }}</span>
-                                            <span
-                                                class="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{{
-                                                item.score }}/10</span>
-                                        </div>
-                                        <!-- Progress Bar -->
-                                        <div class="w-full bg-gray-100 rounded-full h-2 mb-2">
-                                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-1000"
-                                                :style="{width: (item.score * 10) + '%'}"></div>
-                                        </div>
-                                        <p class="text-sm text-gray-500 leading-relaxed">{{ item.reason }}</p>
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <ion-icon name="analytics-outline"></ion-icon> 深度能力评估 (Evaluation Matrix)
+                            </h3>
+                            <div class="grid grid-cols-1 gap-4">
+                                <div v-for="(item, key) in currentCandidate.result.evaluation_matrix" :key="key"
+                                    class="group p-4 rounded-xl border border-gray-100 bg-white hover:border-indigo-100 hover:shadow-lg transition-all">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-semibold text-slate-700 capitalize">{{ formatKey(key)
+                                            }}</span>
+                                        <span
+                                            class="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{{
+                                            item.score }}/10</span>
                                     </div>
+                                    <!-- Progress Bar -->
+                                    <div class="w-full bg-gray-100 rounded-full h-2 mb-2">
+                                        <div class="bg-indigo-500 h-2 rounded-full transition-all duration-1000"
+                                            :style="{width: (item.score * 10) + '%'}"></div>
+                                    </div>
+                                    <p class="text-sm text-gray-500 leading-relaxed">{{ item.reason }}</p>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Interview Questions -->
-                            <div
-                                v-if="currentCandidate.result.interview_questions && currentCandidate.result.interview_questions.length > 0">
-                                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 mt-8">
-                                    <ion-icon name="help-circle-outline"></ion-icon> Interview Questions
-                                </h3>
-                                <div class="space-y-4">
-                                    <div v-for="(item, index) in currentCandidate.result.interview_questions"
-                                        :key="index"
-                                        class="p-5 rounded-xl border border-indigo-100 bg-indigo-50/30 transition-all hover:shadow-md group">
-                                        <div class="flex gap-3 mb-3">
-                                            <span class="font-bold text-indigo-500 shrink-0 text-lg">Q{{ index + 1
-                                                }}</span>
-                                            <p class="font-semibold text-slate-800 text-lg leading-snug">{{
-                                                item.question || item }}</p>
+                        <!-- Interview Questions -->
+                        <div
+                            v-if="currentCandidate.result.interview_questions && currentCandidate.result.interview_questions.length > 0">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 mt-8">
+                                <ion-icon name="help-circle-outline"></ion-icon> Interview Questions
+                            </h3>
+                            <div class="space-y-4">
+                                <div v-for="(item, index) in currentCandidate.result.interview_questions" :key="index"
+                                    class="p-5 rounded-xl border border-indigo-100 bg-indigo-50/30 transition-all hover:shadow-md group">
+                                    <div class="flex gap-3 mb-3">
+                                        <span class="font-bold text-indigo-500 shrink-0 text-lg">Q{{ index + 1
+                                            }}</span>
+                                        <p class="font-semibold text-slate-800 text-lg leading-snug">{{
+                                            item.question || item }}</p>
+                                    </div>
+
+                                    <!-- Answer Section -->
+                                    <div class="ml-9 space-y-3 mt-3">
+                                        <!-- Context -->
+                                        <div v-if="item.context_for_interviewer"
+                                            class="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                                            <div
+                                                class="flex items-center gap-2 text-amber-700 font-bold text-xs uppercase tracking-wider mb-1">
+                                                <ion-icon name="bulb-outline"></ion-icon> 考察意图
+                                            </div>
+                                            <p class="text-slate-700 text-sm italic">{{ item.context_for_interviewer
+                                                }}</p>
                                         </div>
 
-                                        <!-- Answer Section (supports both old string format and new object format) -->
-                                        <div v-if="item.answer" class="ml-9 pl-4 border-l-2 border-indigo-200">
-                                            <p class="text-sm font-bold text-slate-500 mb-1">参考思路 / 核心考点：</p>
+                                        <!-- Detailed Answer -->
+                                        <div v-if="item.reference_answer_detailed"
+                                            class="pl-4 border-l-2 border-indigo-200 bg-slate-50/50 p-3 rounded-r-lg">
+                                            <div
+                                                class="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-wider mb-2">
+                                                <ion-icon name="key-outline"></ion-icon> 参考答案 & 评分标准
+                                            </div>
+                                            <div
+                                                class="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap font-mono text-xs">
+                                                {{ item.reference_answer_detailed }}</div>
+                                        </div>
+
+                                        <!-- Legacy Fallback -->
+                                        <div v-else-if="item.answer" class="pl-4 border-l-2 border-indigo-200">
+                                            <p class="text-sm font-bold text-slate-500 mb-1">参考思路：</p>
                                             <p class="text-slate-600 leading-relaxed">{{ item.answer }}</p>
                                         </div>
                                     </div>
@@ -246,9 +269,10 @@
                     </div>
                 </div>
             </div>
-
-
         </div>
+
+
+
 
         <!-- Password Overlay -->
         <div v-if="!isAuthenticated"
