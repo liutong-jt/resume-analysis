@@ -210,10 +210,16 @@ ANALYSIS_SYSTEM_PROMPT = """
     * **学习能力 (learning_ability)**：*不仅是学得快，还要看学得深*
         - **洞察方向**：是否通过官方文档而非二手教程学习？是否有解决 "Unknown Unknowns" (未知的未知) 问题的经历？
 
-3.  **总结**：生成一句话的“毒舌”或“赞赏”摘要。
+3. **面试追问（Interview Questions）**：
+    *   基于候选人的项目经历和技术栈，生成 **3个犀利的面试问题** 及 **参考答案**。
+    *   **要求**：问题必须具体、有针对性，避免通用问题。参考答案应包含核心考点和期望的回答方向。
+    *   **示例**：
+        - 看到简历中有 `Kafka`，问题：“在你的高并发场景下，如何保证 Kafka 消息的顺序性？” 答案：“考点是 Partition Key 的使用和 Consumer Group 机制。期望通过 Key 保证同一业务ID的消息进入同一 Partition...”
+
+4.  **总结**：生成一句话的“毒舌”或“赞赏”摘要。
 
 **输出格式要求：**
-* **Reason 字段风格**：请使用**简练、辛辣、一针见血**的专业评审语气。不要写“该候选人展示了...”，直接写“项目描述流于表面，缺乏高并发场景下的深层思考”或“技术栈扎实，但对分布式事务的处理缺乏细节”。
+* **Reason 字段风格**：请使用**简练、辛辣、一针见血**的专业评审语气。
 * 严格输出 JSON。
 
 **JSON 结构模版：**
@@ -227,6 +233,11 @@ ANALYSIS_SYSTEM_PROMPT = """
     "tech_potential": { "score": 0, "reason": "60字以内犀利点评" },
     "learning_ability": { "score": 0, "reason": "60字以内犀利点评" }
   },
+  "interview_questions": [
+    { "question": "针对项目A的并发场景提出的犀利问题", "answer": "核心考点及简要参考答案" },
+    { "question": "针对技术栈B的底层原理追问", "answer": "核心考点及简要参考答案" },
+    { "question": "针对架构设计C的权衡考量", "answer": "核心考点及简要参考答案" }
+  ],
   "total_score": 0
 }
 """
@@ -242,6 +253,10 @@ def process_evaluation_result(result: dict, filename: str = None) -> dict:
             result['candidate_name'] = filename.replace('.pdf', '').replace('.PDF', '')
         else:
             result['candidate_name'] = 'Candidate'
+
+    # Ensure interview_questions exists and is a list
+    if 'interview_questions' not in result or not isinstance(result['interview_questions'], list):
+        result['interview_questions'] = []
 
     # Ensure total score is calculated correctly
     total = 0
@@ -357,8 +372,9 @@ async def call_llm_for_analysis(
     response = await client.chat.completions.create(
         model=model_name,
         messages=messages,
-        max_tokens=2000,
-        response_format={"type": "json_object"}
+        max_tokens=5000,
+        response_format={"type": "json_object"},
+        extra_body={"reasoning": {"enabled": True}}
     )
     
     content = response.choices[0].message.content

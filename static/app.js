@@ -290,15 +290,29 @@ const app = createApp({
         };
 
         const reanalyzeFromOcr = async () => {
+            console.log('reanalyzeFromOcr called');
             if (reanalyzing.value) return;
-            if (!confirm('确认基于已有 OCR 文本重新评估所有候选人？这将消耗 API 配额。')) return;
+
+            try {
+                if (!window.confirm('确认基于已有 OCR 文本重新评估所有候选人？这将消耗 API 配额。')) {
+                    return;
+                }
+            } catch (e) {
+                console.error('Confirm dialog blocked or failed:', e);
+                // Fallback: proceed if confirm fails? No, safer to return.
+                return;
+            }
+
             reanalyzing.value = true;
             try {
+                console.log('Sending reanalyze request...');
                 const res = await fetchWithAuth('/api/candidates/reanalyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
+                    body: JSON.stringify({ candidate_ids: [] }) // Explicitly empty list to signal "all"
                 });
+                console.log('Reanalyze response status:', res.status);
+
                 if (!res.ok) {
                     const errorData = await res.json().catch(() => ({}));
                     throw new Error(errorData.detail || `重评失败 (${res.status})`);
@@ -307,6 +321,7 @@ const app = createApp({
                 handleError(`已触发重评：${data.updated}/${data.requested} 份`, 4000);
                 await loadHistory();
             } catch (error) {
+                console.error('Reanalyze error:', error);
                 if (error.message === AUTH_ERROR) return;
                 handleError(error.message || '重评失败，请稍后重试');
             } finally {

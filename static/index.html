@@ -216,6 +216,32 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Interview Questions -->
+                            <div
+                                v-if="currentCandidate.result.interview_questions && currentCandidate.result.interview_questions.length > 0">
+                                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 mt-8">
+                                    <ion-icon name="help-circle-outline"></ion-icon> Interview Questions
+                                </h3>
+                                <div class="space-y-4">
+                                    <div v-for="(item, index) in currentCandidate.result.interview_questions"
+                                        :key="index"
+                                        class="p-5 rounded-xl border border-indigo-100 bg-indigo-50/30 transition-all hover:shadow-md group">
+                                        <div class="flex gap-3 mb-3">
+                                            <span class="font-bold text-indigo-500 shrink-0 text-lg">Q{{ index + 1
+                                                }}</span>
+                                            <p class="font-semibold text-slate-800 text-lg leading-snug">{{
+                                                item.question || item }}</p>
+                                        </div>
+
+                                        <!-- Answer Section (supports both old string format and new object format) -->
+                                        <div v-if="item.answer" class="ml-9 pl-4 border-l-2 border-indigo-200">
+                                            <p class="text-sm font-bold text-slate-500 mb-1">参考思路 / 核心考点：</p>
+                                            <p class="text-slate-600 leading-relaxed">{{ item.answer }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -249,7 +275,7 @@
     </div>
 
     <!-- Application Logic -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2"></script>
 </body>
 
 </html>
