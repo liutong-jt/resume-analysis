@@ -25,6 +25,7 @@ const app = createApp({
             category: { label: 'Category', icon: 'albums-outline' }
         };
         const categoryPriority = { AI: 0, BigData: 1, Other: 2 };
+        const reanalyzing = ref(false);
 
         const fetchWithAuth = async (url, options = {}) => {
             const opts = { credentials: 'same-origin', ...options };
@@ -288,6 +289,31 @@ const app = createApp({
             }
         };
 
+        const reanalyzeFromOcr = async () => {
+            if (reanalyzing.value) return;
+            if (!confirm('确认基于已有 OCR 文本重新评估所有候选人？这将消耗 API 配额。')) return;
+            reanalyzing.value = true;
+            try {
+                const res = await fetchWithAuth('/api/candidates/reanalyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `重评失败 (${res.status})`);
+                }
+                const data = await res.json();
+                handleError(`已触发重评：${data.updated}/${data.requested} 份`, 4000);
+                await loadHistory();
+            } catch (error) {
+                if (error.message === AUTH_ERROR) return;
+                handleError(error.message || '重评失败，请稍后重试');
+            } finally {
+                reanalyzing.value = false;
+            }
+        };
+
         // Selection Methods
         const selectCandidate = (index) => {
             selectedIndex.value = index;
@@ -358,9 +384,10 @@ const app = createApp({
             candidates, selectedIndex, selectCandidate, currentCandidate,
             getScoreColor, formatKey,
             errorMessage, showError, clearError,
-            clearCache, deleteCandidate, removeDuplicates,
+            clearCache, deleteCandidate, removeDuplicates, reanalyzeFromOcr,
             sortedCandidates, sortOrder, toggleSort, currentSortMeta,
-            isAuthenticated, passwordInput, submitPassword, authError, authenticating
+            isAuthenticated, passwordInput, submitPassword, authError, authenticating,
+            reanalyzing
         };
     }
 });

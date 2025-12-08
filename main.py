@@ -98,6 +98,9 @@ class AnalyzeRequest(BaseModel):
 class LoginRequest(BaseModel):
     password: str
 
+class ReanalyzeRequest(BaseModel):
+    candidate_ids: Optional[List[str]] = None
+
 # ----------------- Helper Functions -----------------
 
 def get_openai_settings() -> Dict[str, str]:
@@ -542,6 +545,93 @@ async def analyze_resume(request: AnalyzeRequest):
     except Exception as e:
         print(f"Error analyzing resume: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/candidates/reanalyze")
+async def reanalyze_candidates(request: Optional[ReanalyzeRequest] = None):
+    """
+    根据已存在的 OCR 文本重新评估一个或多个候选人。
+    若未提供 candidate_ids，则对所有存在 OCR 结果的候选人执行评估。
+    """
+    target_ids = []
+    if request and request.candidate_ids:
+        target_ids = [cid for cid in request.candidate_ids if cid]
+    else:
+        target_ids = sorted([path.stem for path in OCR_DIR.glob("*.txt")])
+
+    if not target_ids:
+        return {
+            "status": "success",
+            "requested": 0,
+            "updated": 0,
+            "errors": [],
+            "message": "No OCR records available for re-analysis"
+        }
+
+    openai_settings = get_openai_settings()
+    async_client = AsyncOpenAI(
+        api_key=openai_settings["api_key"],
+        base_url=openai_settings["base_url"]
+    )
+
+    summary = {
+        "status": "success",
+        "requested": len(target_ids),
+        "updated": 0,
+        "errors": []
+    }
+
+    for cid in target_ids:
+        ocr_path = OCR_DIR / f"{cid}.txt"
+        if not ocr_path.exists():
+            summary["errors"].append({
+                "candidate_id": cid,
+                "error": "OCR content not found"
+            })
+            continue
+
+        try:
+            with open(ocr_path, "r", encoding="utf-8") as f:
+                ocr_text = f.read().strip()
+        except Exception as exc:
+            summary["errors"].append({
+                "candidate_id": cid,
+                "error": f"Failed to read OCR text: {exc}"
+            })
+            continue
+
+        if not ocr_text:
+            summary["errors"].append({
+                "candidate_id": cid,
+                "error": "OCR content is empty"
+            })
+            continue
+
+        original_filename = "Resume"
+        metadata_file = METADATA_DIR / f"{cid}.json"
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    original_filename = meta.get("original_filename", original_filename)
+            except Exception:
+                pass
+
+        try:
+            await call_llm_for_analysis(
+                cid,
+                ocr_text,
+                original_filename,
+                client=async_client,
+                model_name=openai_settings["analysis_model"]
+            )
+            summary["updated"] += 1
+        except Exception as exc:
+            summary["errors"].append({
+                "candidate_id": cid,
+                "error": str(exc)
+            })
+
+    return summary
 
 @app.get("/api/candidates/{candidate_id}/ocr")
 async def get_ocr_content(candidate_id: str):

@@ -56,6 +56,7 @@ uvicorn main:app --reload
 3. 界面中可按时间 / 得分 / 领域排序查看候选人；点击某一项可预览原始图像与 AI 输出。
 4. “Clear Cache” 会删除 `data/` 目录下的缓存；也可在命令行调用 `DELETE /api/candidates/<id>` 删除单个候选人。
 5. 需要批量去重时，请调用 `DELETE /api/candidates/deduplicate`，系统会以原始文件名为键，保留最新上传记录。
+6. 若仅更新了评估提示词或打分策略，可调用 `POST /api/candidates/reanalyze` 复用已有的 OCR 文本重新生成结果；请求体可选地带上 `{"candidate_ids": ["id1", "id2"]}` 仅重评指定候选人。
 
 ## 目录结构
 ```
@@ -69,4 +70,3 @@ uvicorn main:app --reload
 ├── pyproject.toml         # Python 依赖声明
 └── README.md
 ```
-
